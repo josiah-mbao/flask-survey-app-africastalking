@@ -1,9 +1,12 @@
 from flask import Flask, request
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime
+from app import db
 
 app = Flask(__name__)
 
 questions = [
-        "CON How are you attending the the service this Sunday? \n",
+        "CON How are you attendisng the the service this Sunday? \n",
         "CON How satisfied are you with your overall experience at church? \n",
         "CON Which communication channel do you prefer for receiving church updates? \n",
         "CON Which of the church's resources do you use the most? \n",
@@ -19,7 +22,24 @@ answers = [
 
 user_responses = {}
 
-@app.route('/ussd', methods=['POST'])
+
+class Response(db.Model):
+    __tablename__= 'responses'
+    response_id = db.Column(db.Integer, primary_key=True)
+    phone_number = db.Column(db.String(15), nullable=False)
+    numeric_answer = db.Column(db.Integer, nullable=True)
+    submission_timestamp = db.Column(db.TIMESTAMP, default=datetime.utcnow)
+    question_id = db.Column(db.Integer, db.ForeignKey('questions.question_id'), nullable=True)
+    question_text = db.Column(db.Text, nullable=True)
+
+
+class Question(db.Model):
+    __tablename__ = 'questions'
+    question_id = db.Column(db.Integer, primary_key=True)
+    question_text = db.Column(db.Text, nullable=False)
+
+
+@app.route('/ussd', methods=['POST', 'GET'])
 def ussd_callback():
     # Receives data from Africa's Talking API
     data = request.json
@@ -51,7 +71,7 @@ def ussd_callback():
     #response_text = handle_ussd_request(session_id, phone_number, text)
 
     # Return a plain text response to Africa's Talking API
-    return response_text, 200, {'Content-Type': 'text/plain'}
+    return response, 200, {'Content-Type': 'text/plain'}
 
 def get_survey_question(session_id, question_number):
     question_text = questions[question_number]
@@ -72,6 +92,16 @@ def process_survey_response(session_id, text):
     # Store the user's response
     user_responses[session_id][question_number] = selected_option
 
+     # Create a new database entry for the response
+    response = Response(
+        phone_number=user_responses[session_id]['phone_number'],
+        numeric_answer=selected_option,
+        question_id=question_number + 1,
+        question_text=questions[question_number]
+    )
+    db.session.add(response)
+    db.session.commit()
+
     next_question_number = question_number + 1
 
     if next_question_number < len(questions):
@@ -83,7 +113,7 @@ def process_survey_response(session_id, text):
 
 def process_final_responses(session_id):
     # Process the user's responses (you can customize this part based on your needs)
-    final_response = "END Survey completed. Thank you!\n"
+    final_response = "END Survey completed. Thank you and have a blessed day!\n"
     
     for i, question_text in enumerate(questions):
         answer_options = answers[i]
